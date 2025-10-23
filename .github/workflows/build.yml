@@ -1,0 +1,54 @@
+name: Build and Release
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+  repository_dispatch:
+    types: [build_after_sync]
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Set up JDK 17 (Zulu)
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: gradle
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+    - name: Build with Gradle
+      run: ./gradlew clean build test
+    - name: Get current timestamp
+      id: timestamp
+      run: echo "timestamp=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_OUTPUT
+    - name: Rename artifact
+      run: mv build/libs/*.jar build/libs/myau-${{ steps.timestamp.outputs.timestamp }}.jar
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifact
+        path: build/libs/myau-${{ steps.timestamp.outputs.timestamp }}.jar
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.timestamp.outputs.timestamp }}
+        name: Auto-Build
+        files: build/libs/myau-${{ steps.timestamp.outputs.timestamp }}.jar
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Delete old releases (keep last 5)
+      uses: dev-drprasad/delete-older-releases@v0.3.4
+      with:
+        keep_latest: 5
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
