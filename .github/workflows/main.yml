@@ -1,0 +1,66 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write    
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout your fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set Git config
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/60124808866/OpenMyau.git
+          git fetch upstream main
+
+      - name: Check if upstream has new commits
+        id: check_upstream
+        run: |
+          LOCAL=$(git rev-parse main)
+          REMOTE=$(git rev-parse upstream/main)
+          echo "Local:  $LOCAL"
+          echo "Remote: $REMOTE"
+          if [ "$LOCAL" = "$REMOTE" ]; then
+            echo "No new commits upstream."
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "New commits found upstream!"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Merge upstream/main into your main
+        if: steps.check_upstream.outputs.changed == 'true'
+        run: |
+          git checkout main
+          echo "Merging upstream/main..."
+          git merge upstream/main --allow-unrelated-histories --no-edit
+
+
+      - name: Push changes to your fork
+        if: steps.check_upstream.outputs.changed == 'true'
+        run: |
+          echo "Pushing changes to origin..."
+          git push origin main
+
+
+      - name: Trigger build workflow
+        if: steps.check_upstream.outputs.changed == 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          event-type: build_after_sync
